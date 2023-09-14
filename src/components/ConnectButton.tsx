@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Web3 from "web3";
 import { useWeb3React } from "@web3-react/core";
+import {formatUnits} from '@ethersproject/units'
 
 import {
   Button,
@@ -20,6 +21,13 @@ import { useDisclosure, useToast } from "@chakra-ui/react";
 import {ChainIdHex, injected} from "../config/wallets";
 import abi from "./abi.json";
 import { AbiItem } from "web3-utils";
+import {BigNumberish, ethers} from 'ethers';
+import {Web3Provider} from "@ethersproject/providers";
+import {InterfaceAbi} from "ethers/lib.commonjs/abi";
+import {Simulate} from "react-dom/test-utils";
+import error = Simulate.error;
+import {Deferrable} from "@ethersproject/properties";
+import {TransactionRequest, TransactionResponse} from "@ethersproject/abstract-provider";
 
 declare global {
   interface Window {
@@ -27,8 +35,10 @@ declare global {
   }
 }
 
-export default function ConnectButton() {
-  const { account, active, activate, library, deactivate } = useWeb3React();
+export default function ConnectButton({provider}: {provider: Web3Provider}) {
+  const signer = provider.getSigner()
+  const [account, setAccount] = useState<string>('')
+  // const { account, active, activate, library, deactivate } = useWeb3React();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [connected, setConnected] = useState<boolean>(false);
   const [balance, setBalance] = useState<string>("0");
@@ -79,21 +89,32 @@ export default function ConnectButton() {
         // if no window.ethereum then MetaMask is not installed
         alert('MetaMask is not installed. Please consider installing it: https://metamask.io/download.html');
       }
-    connected ? deactivate() : await activate(injected);
+    // connected ? deactivate() : await activate(injected);
     setConnected(!connected);
   }
 
+  async function getAccount() {
+   return await provider.listAccounts().then((res: string[]) => {
+     return res[0]
+   })
+  }
+
   useEffect(() => {
+    provider.listAccounts().then((accounts: string[]) => {
+     setAccount(accounts[0])
+    })
     if (connected && window.ethereum) {
       window.ethereum.on('chainChanged', (chainId: string) => {
-        if (chainId !== ChainIdHex.BSC_TESTNET) {
-          deactivate()
+        if (chainId !== ChainIdHex.ETHEREUM) {
+          // deactivate()
           setConnected(!connected)
         }
       })
-      window.ethereum.on('accountsChanged', () => {
-        deactivate()
-        setConnected(!connected);
+      window.ethereum.on('accountsChanged', (params: any) => {
+        console.log(123)
+        console.log(params, 'params')
+        // deactivate()
+        // setConnected(!connected);
       })
     }
   }, [connected]);
@@ -124,103 +145,79 @@ export default function ConnectButton() {
       });
     }
 
-    const web3 = new Web3(library.provider);
-    var block = await web3.eth.getBlock("latest");
-    setGasLimit(block.gasLimit);
+    const block = await provider.getBlock("latest");
+    setGasLimit(+block.gasLimit.toString());
 
-    const gasPrice = await web3.eth.getGasPrice();
-    setGasFee(toGWei(web3, gasPrice.toString()));
+    const gasPrice = await provider.getGasPrice()
+    setGasFee(toGWei(gasPrice.toString()));
 
     onOpen();
   }
 
-  const sendBaby = useCallback(async () => {
-    const web3 = new Web3(library.provider);
-    const ctx = new web3.eth.Contract(
-        abi as AbiItem[],
-        "0xc748673057861a797275CD8A068AbB95A902e8de"
-    );
-
-    await ctx.methods.approve(account, sendAmount).call();
-    await ctx.methods.transfer(recieverAdd, sendAmount).send();
-  }, [account, library]);
+  // const sendBaby = useCallback(async () => {
+  //   const ctx = new ethers.Contract(
+  //       "0xc748673057861a797275CD8A068AbB95A902e8de",
+  //     abi as InterfaceAbi,
+  //   );
+  //
+  //   await ctx.methods.approve(account, sendAmount).call();
+  //   await ctx.deployTransaction(recieverAdd, sendAmount);
+  // }, [account, library]);
 
   const sendAction = useCallback(async () => {
-    const web3 = new Web3(library.provider);
-
-    const txParams: any = {
-      from: account,
+    const txParams: Deferrable<TransactionRequest> = {
+      from: account ?? '',
       to: recieverAdd,
-
-      value: Web3.utils.toWei(sendAmount.toString(), "ether"),
+      gasLimit: gasLimit,
+      gasPrice: gasFee,
+      value: formatUnits(sendAmount.toString(), "wei"),
     };
-    console.log(txParams);
-    await web3.eth.sendTransaction(txParams, (error: any, hash: any) => {
-      if (error) {
-        console.error(error);
-      } else {
-        console.log(`Transaction hash: ${hash}`);
-        web3.eth.getTransaction(hash, (error, transaction) => {
-          if (error) {
-            return;
-          }
-
-          console.log(`Transaction data: ${transaction?.input}`);
-        });
-      }
-    });
+    await signer.sendTransaction(txParams).catch(error => console.error(error)).then((res: any) => {
+      console.log(`Transaction hash: ${res.hash}`);
+      provider.getTransaction(res.hash).then((transaction) => {
+        console.log('Transaction receipt: ', transaction.wait().then((receipt) => receipt))
+      })
+    })
     onClose();
     valueload();
-  }, [account, library, recieverAdd, sendAmount]);
+  }, []);
 
-  function fromWei(
-      web3: { utils: { fromWei: (arg0: any) => any } },
-      val: { toString: () => any }
-  ) {
-    if (val) {
-      val = val.toString();
-      return web3.utils.fromWei(val);
-    } else {
-      return "0";
-    }
+  function fromWei(val?: string) {
+    return val ? formatUnits(val, 'gwei') : '0'
   }
 
-  function toGWei(web3: any, val: string) {
-    if (val) {
-      return web3.utils.fromWei(val, "gwei");
-    } else {
-      return "0";
-    }
+  function toGWei(val?: string) {
+    return val ? formatUnits(val, "gwei") : '0'
   }
 
   const valueload = useCallback(async () => {
-    const web3 = new Web3(library.provider);
-    const ctx = new web3.eth.Contract(
-        abi as AbiItem[],
-        "0xc748673057861a797275CD8A068AbB95A902e8de"
+    const ctx = new ethers.Contract(
+        "0xc748673057861a797275CD8A068AbB95A902e8de",
+        abi as InterfaceAbi,
     );
-    console.log(ctx);
-    if (account) {
-      const value = await web3.eth.getBalance(account);
-      setBalance(Number(fromWei(web3, value)).toFixed(5));
+      if (account) {
+        const balance = await provider.getBalance(account);
+        console.log(account, 'acc')
+        console.log(balance, 'bal')
+        setBalance(Number(fromWei(balance.toString())).toFixed(5));
 
-      const gasPrice = await web3.eth.getGasPrice();
-      setGasFee(gasPrice);
+        const gasPrice = await provider.getGasPrice();
+        setGasFee(gasPrice.toString());
 
-      // const value1 = await ctx.methods.balanceOf(account).call({gasPrice: Number(gasPrice) * 100});
-      // console.log('[baby amount]', value1)
-      // setBabyBalance(value1);
-    }
-  }, [account, library]);
+        // const value1 = await ctx.methods.balanceOf(account).call({gasPrice: Number(gasPrice) * 100});
+        // console.log('[baby amount]', value1)
+        // setBabyBalance(value1);
+      }
+    }, [account]);
 
-  useEffect(() => {
-    active && valueload();
-  }, [account, active, valueload]);
+    useEffect(() => {
+      // active && valueload();
+    }, [account, valueload]);
 
     return (
         <>
           <h1 className="title">Metamask login demo from Enva Division</h1>
-          {account ? (
+          {connected ? (
               <Box
                   display="block"
                   alignItems="center"
