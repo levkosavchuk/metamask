@@ -1,27 +1,25 @@
 import './App.css';
+import { Web3ReactProvider } from '@web3-react/core';
+import { Web3Provider } from '@ethersproject/providers';
+import './App.css';
 import { ChakraProvider, extendTheme  } from "@chakra-ui/react";
 import Layout from "./components/Layout";
 import ConnectButton from './components/ConnectButton';
-import {useEffect, useState} from "react";
-import {Web3Provider} from '@ethersproject/providers'
 
 function App() {
 
-  const [provider, setProvider] = useState<Web3Provider | undefined>(undefined);
-
-  useEffect(() => {
-    const initializeProvider = async () => {
-      if (window.ethereum) {
-        const provider = new Web3Provider(window.ethereum);
-        await window.ethereum.request({ method: 'eth_requestAccounts' });
-        setProvider(provider);
-      } else {
-        setProvider(undefined)
-      }
-    };
-
-    initializeProvider();
-  }, []);
+  function getLibrary(provider: any): Web3Provider {
+    const library = new Web3Provider(
+        provider,
+        typeof provider.chainId === 'number'
+            ? provider.chainId
+            : typeof provider.chainId === 'string'
+                ? parseInt(provider.chainId)
+                : 'any'
+    );
+    library.pollingInterval = 15_000;
+    return library;
+  }
 
 
   const theme= extendTheme({
@@ -34,11 +32,13 @@ function App() {
   })
 
   return (
-      <ChakraProvider theme={theme} >
-        <Layout>
-          {provider ? <ConnectButton provider={provider} /> : <div>please install metamask</div> }
-        </Layout>
-      </ChakraProvider>
+      <Web3ReactProvider getLibrary={getLibrary}>
+        <ChakraProvider theme={theme} >
+          <Layout>
+            <ConnectButton />
+          </Layout>
+        </ChakraProvider>
+      </Web3ReactProvider>
   );
 }
 
