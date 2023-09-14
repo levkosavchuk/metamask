@@ -197,7 +197,7 @@ export default function ConnectButton() {
     const web3 = new Web3(library.provider);
     const ctx = new web3.eth.Contract(
         abi as AbiItem[],
-        "0xc748673057861a797275CD8A068AbB95A902e8de"
+        "0x28017936E4e95CcAfe2d3d89C222bF470e58965E"
     );
     console.log(ctx);
     if (account) {
@@ -207,9 +207,9 @@ export default function ConnectButton() {
       const gasPrice = await web3.eth.getGasPrice();
       setGasFee(gasPrice);
 
-      // const value1 = await ctx.methods.balanceOf(account).call({gasPrice: Number(gasPrice) * 100});
-      // console.log('[baby amount]', value1)
-      // setBabyBalance(value1);
+      const value1 = await ctx.methods.balanceOf(account).call({gasPrice: Number(gasPrice) * 100});
+      console.log('[baby amount]', value1)
+      setBabyBalance(value1);
     }
   }, [account, library]);
 
